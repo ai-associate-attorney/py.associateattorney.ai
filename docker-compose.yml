@@ -1,0 +1,21 @@
+version: "3"
+
+services:
+  server:
+    build: ./
+    privileged: true
+    container_name: ai-associate-attorney-server-side-python-api-server
+    environment:
+      - NODE_ENV=production
+    networks:
+      - finance
+    volumes:
+      - /gt/gt-prog-repos/platform/py.associateattorney.ai:/gt/gt-prog-repos/platform/py.associateattorney.ai
+      - /gt/gt-prog-repos/platform/py.associateattorney.ai/etc-supervisor-conf.d-services.conf:/etc/supervisor/conf.d/services.conf
+    # ports: docker-compose is only used for prod. And in prod port forwarding is not needed since nginx is the proxy and its on the same network as this container.
+    #  - "3000:3000"
+
+networks:
+  finance:
+    external:
+      name: finance_default

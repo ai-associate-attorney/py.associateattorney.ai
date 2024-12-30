@@ -24,7 +24,7 @@ import tempfile
 
 # Create Flask app instance
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+#CORS(app)  # Enable CORS for all routes
 
 load_dotenv()  # This loads the variables from .env
 
