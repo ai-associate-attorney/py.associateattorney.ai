@@ -136,11 +136,116 @@ def get_typeahead_suggestions():
         return jsonify({"suggestions": []})
         
     messages = [
-        {"role": "system", "content": f"""You are a legal assistant helping complete words and phrases. 
+        {"role": "system", "content": f"""You are a specialized legal assistant for a California civil law practice. Your role is to provide relevant word and phrase completions in the context of:
+
+1. Family Law:
+- Divorce proceedings, child custody, spousal support, visitation rights
+- Domestic partnerships, prenuptial agreements
+- Child support calculations and modifications
+
+2. Housing Law:
+- Landlord-tenant disputes
+- Eviction proceedings
+- Rental agreements and lease violations
+- Property maintenance issues
+- Fair housing violations
+
+3. Contract Law:
+- Contract drafting and review
+- Breach of contract cases
+- Service agreements
+- Business contracts
+- Settlement agreements
+
+4. Employment Law:
+- Workplace discrimination
+- Wrongful termination
+- Wage and hour disputes
+- Employment contracts
+- Workplace harassment
+- Workers' compensation
+
+5. Property Law:
+- Real estate transactions
+- Property boundary disputes
+- Easement issues
+- HOA disputes
+- Property title issues
+
+6. Civil Harassment:
+- Restraining orders
+- Civil harassment orders
+- Workplace protection orders
+- Elder abuse prevention
+
+When suggesting completions, consider:
+- Common legal terminology used in California courts
+- Relevant California Civil Code sections
+- Standard legal document phrases
+- Common case citation formats
+- Procedural terms used in civil litigation
+- Names of relevant California court forms
+- Standard legal pleading language
+
+Provide concise, context-appropriate suggestions that would be useful in legal documentation, correspondence, and court filings.
 Current context: {system_prompt}
 Provide 3-5 brief, relevant suggestions to complete: "{incomplete_word}"
 Format as a simple array of strings."""},
-        {"role": "user", "content": incomplete_word}
+        {"role": "user", "content": f"""You are a specialized legal assistant for a California civil law practice. Your role is to provide relevant word and phrase completions in the context of:
+
+1. Family Law:
+- Divorce proceedings, child custody, spousal support, visitation rights
+- Domestic partnerships, prenuptial agreements
+- Child support calculations and modifications
+
+2. Housing Law:
+- Landlord-tenant disputes
+- Eviction proceedings
+- Rental agreements and lease violations
+- Property maintenance issues
+- Fair housing violations
+
+3. Contract Law:
+- Contract drafting and review
+- Breach of contract cases
+- Service agreements
+- Business contracts
+- Settlement agreements
+
+4. Employment Law:
+- Workplace discrimination
+- Wrongful termination
+- Wage and hour disputes
+- Employment contracts
+- Workplace harassment
+- Workers' compensation
+
+5. Property Law:
+- Real estate transactions
+- Property boundary disputes
+- Easement issues
+- HOA disputes
+- Property title issues
+
+6. Civil Harassment:
+- Restraining orders
+- Civil harassment orders
+- Workplace protection orders
+- Elder abuse prevention
+
+When suggesting completions, consider:
+- Common legal terminology used in California courts
+- Relevant California Civil Code sections
+- Standard legal document phrases
+- Common case citation formats
+- Procedural terms used in civil litigation
+- Names of relevant California court forms
+- Standard legal pleading language
+
+Provide concise, context-appropriate suggestions that would be useful in legal documentation, correspondence, and court filings.
+Current context: {system_prompt}
+Provide 3-5 brief, relevant suggestions to complete: "{incomplete_word}"
+Format as a simple array of strings."""}
     ]
     
     try:
