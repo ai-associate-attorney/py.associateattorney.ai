@@ -127,134 +127,53 @@ def get_typeahead_suggestions():
     cursor_position = request.json.get('cursorPosition')
     system_prompt = request.json.get('systemPrompt')
     
-    # Get the incomplete word at cursor position
+    # Get the complete text before cursor for context
     text_before_cursor = current_text[:cursor_position]
-    words = text_before_cursor.split()
-    incomplete_word = words[-1] if words else ''
     
-    if len(incomplete_word) < 2:  # Only suggest after 2 characters
+    # Find the word at cursor (complete or incomplete)
+    start = text_before_cursor.rstrip().rfind(' ') + 1 if ' ' in text_before_cursor.rstrip() else 0
+    current_word = text_before_cursor[start:].strip()
+    
+    # Get the last few sentences for context (up to 500 characters)
+    context_text = text_before_cursor[-500:] if len(text_before_cursor) > 500 else text_before_cursor
+    
+    if not current_word and not context_text:  # Only suggest if there's some input
         return jsonify({"suggestions": []})
         
     messages = [
-        {"role": "system", "content": f"""You are a specialized legal assistant for a California civil law practice. Your role is to provide relevant word and phrase completions in the context of:
+        {"role": "system", "content": f"""You are a specialized legal assistant for a California civil law practice. Your role is to provide a single, detailed paragraph completion or continuation based on the following context:
 
-1. Family Law:
-- Divorce proceedings, child custody, spousal support, visitation rights
-- Domestic partnerships, prenuptial agreements
-- Child support calculations and modifications
+1. Family Law: Divorce proceedings, child custody, spousal support, visitation rights, domestic partnerships, prenuptial agreements, child support calculations
 
-2. Housing Law:
-- Landlord-tenant disputes
-- Eviction proceedings
-- Rental agreements and lease violations
-- Property maintenance issues
-- Fair housing violations
+2. Housing Law: Landlord-tenant disputes, eviction proceedings, rental agreements, lease violations, property maintenance, fair housing
 
-3. Contract Law:
-- Contract drafting and review
-- Breach of contract cases
-- Service agreements
-- Business contracts
-- Settlement agreements
+3. Contract Law: Contract drafting/review, breach of contract, service agreements, business contracts, settlements
 
-4. Employment Law:
-- Workplace discrimination
-- Wrongful termination
-- Wage and hour disputes
-- Employment contracts
-- Workplace harassment
-- Workers' compensation
+4. Employment Law: Workplace discrimination, wrongful termination, wage disputes, employment contracts, harassment, workers' compensation
 
-5. Property Law:
-- Real estate transactions
-- Property boundary disputes
-- Easement issues
-- HOA disputes
-- Property title issues
+5. Property Law: Real estate transactions, boundary disputes, easements, HOA disputes, title issues
 
-6. Civil Harassment:
-- Restraining orders
-- Civil harassment orders
-- Workplace protection orders
-- Elder abuse prevention
+6. Civil Harassment: Restraining orders, civil harassment orders, workplace protection, elder abuse
 
-When suggesting completions, consider:
-- Common legal terminology used in California courts
-- Relevant California Civil Code sections
+Consider:
+- California legal terminology
+- Civil Code sections
 - Standard legal document phrases
-- Common case citation formats
-- Procedural terms used in civil litigation
-- Names of relevant California court forms
-- Standard legal pleading language
+- Case citation formats
+- Civil litigation terms
+- California court forms
+- Legal pleading language
 
-Provide concise, context-appropriate suggestions that would be useful in legal documentation, correspondence, and court filings.
-Current context: {system_prompt}
-Provide 3-5 brief, relevant suggestions to complete: "{incomplete_word}"
-Format as a simple array of strings."""},
-        {"role": "user", "content": f"""You are a specialized legal assistant for a California civil law practice. Your role is to provide relevant word and phrase completions in the context of:
+Previous context: {context_text}
+Current word: {current_word}
 
-1. Family Law:
-- Divorce proceedings, child custody, spousal support, visitation rights
-- Domestic partnerships, prenuptial agreements
-- Child support calculations and modifications
-
-2. Housing Law:
-- Landlord-tenant disputes
-- Eviction proceedings
-- Rental agreements and lease violations
-- Property maintenance issues
-- Fair housing violations
-
-3. Contract Law:
-- Contract drafting and review
-- Breach of contract cases
-- Service agreements
-- Business contracts
-- Settlement agreements
-
-4. Employment Law:
-- Workplace discrimination
-- Wrongful termination
-- Wage and hour disputes
-- Employment contracts
-- Workplace harassment
-- Workers' compensation
-
-5. Property Law:
-- Real estate transactions
-- Property boundary disputes
-- Easement issues
-- HOA disputes
-- Property title issues
-
-6. Civil Harassment:
-- Restraining orders
-- Civil harassment orders
-- Workplace protection orders
-- Elder abuse prevention
-
-When suggesting completions, consider:
-- Common legal terminology used in California courts
-- Relevant California Civil Code sections
-- Standard legal document phrases
-- Common case citation formats
-- Procedural terms used in civil litigation
-- Names of relevant California court forms
-- Standard legal pleading language
-
-Provide concise, context-appropriate suggestions that would be useful in legal documentation, correspondence, and court filings.
-Current context: {system_prompt}
-Provide 3-5 brief, relevant suggestions to complete: "{incomplete_word}"
-Format as a simple array of strings."""}
+Based on the previous context and current word, provide ONE detailed paragraph suggestion that would naturally continue the legal document. Format as a single string without any special formatting or markers."""},
+        {"role": "user", "content": f"Previous text: {context_text}\nCurrent word: {current_word}"}
     ]
     
     try:
         response = get_response_from_ai_gpt_4_32k(messages)
-        # Clean up suggestions - remove quotes and extra spaces
-        suggestions = [
-            s.strip().strip('"').strip("'").strip()
-            for s in response.replace('[', '').replace(']', '').split(',')
-        ]
+        suggestions = [response.strip()]
         return jsonify({"suggestions": suggestions})
     except Exception as e:
         return jsonify({"error": str(e)})
