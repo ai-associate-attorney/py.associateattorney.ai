@@ -12,3 +12,5 @@ twilio
 stripe
 Pillow
 pytesseract
+langchain-openai
+langchain
