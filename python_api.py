@@ -24,13 +24,19 @@ import tempfile
 
 # Create Flask app instance
 app = Flask(__name__)
-# CORS(app, resources={
-#     r"/gpt/*": {
-#         "origins": ["http://localhost:3001", "https://app.associateattorney.ai"],
-#         "methods": ["POST", "OPTIONS"],
-#         "allow_headers": ["Content-Type", "Authorization"]
-#     }
-# })
+CORS(app, resources={
+    r"/gpt/*": {
+        "origins": [
+            "http://localhost:3000",
+            "https://app.associateattorney.ai",
+            "https://associateattorney.ai",
+            # Add any other production domains you need
+        ],
+        "methods": ["POST", "OPTIONS", "GET"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
 
 load_dotenv()  # This loads the variables from .env
 
