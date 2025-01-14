@@ -21,6 +21,7 @@ import pytesseract
 import io
 import requests
 import tempfile
+import mimetypes
 
 # Create Flask app instance
 app = Flask(__name__)
@@ -47,15 +48,50 @@ OPENAI_AZURE_API_ENGINE = os.getenv('OPENAI_AZURE_API_ENGINE')
 
 def encode_image_to_base64(image_url):
     try:
+        # Get the image from URL
         response = requests.get(image_url)
-        if response.status_code == 200:
-            image = Image.open(io.BytesIO(response.content))
-            buffered = io.BytesIO()
-            image.save(buffered, format="PNG")
-            return base64.b64encode(buffered.getvalue()).decode('utf-8')
-        return None
+        if response.status_code != 200:
+            raise Exception(f"Failed to fetch image: Status code {response.status_code}")
+
+        # Determine image type from URL or content
+        content_type = response.headers.get('content-type')
+        if not content_type:
+            # Try to guess from URL
+            guessed_type = mimetypes.guess_type(image_url)[0]
+            content_type = guessed_type if guessed_type else 'image/jpeg'
+
+        # Open and convert image using PIL
+        image = Image.open(io.BytesIO(response.content))
+
+        # Convert animated GIFs to first frame
+        if content_type == 'image/gif' and getattr(image, 'is_animated', False):
+            image.seek(0)  # Get first frame
+
+        # Convert to RGB if necessary (for PNG with transparency)
+        if image.mode in ('RGBA', 'P'):
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            if image.mode == 'RGBA':
+                background.paste(image, mask=image.split()[3])
+            else:
+                background.paste(image)
+            image = background
+
+        # Save to bytes with appropriate format
+        buffered = io.BytesIO()
+        save_format = {
+            'image/jpeg': 'JPEG',
+            'image/png': 'PNG',
+            'image/gif': 'PNG',  # Convert GIF to PNG
+            'image/webp': 'WEBP'
+        }.get(content_type, 'JPEG')
+
+        image.save(buffered, format=save_format, quality=85)
+        encoded_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+        # Return with correct mime type
+        return f"data:{content_type};base64,{encoded_image}"
     except Exception as e:
-        print(f"Error encoding image: {str(e)}")
+        print(f"Error processing image: {str(e)}")
         return None
 
 def get_response_from_ai_gpt_4_32k(messages):
@@ -69,13 +105,12 @@ def get_response_from_ai_gpt_4_32k(messages):
             temperature=0.7,
         )
 
-        # Convert messages to LangChain format with image support
+        # Convert messages to LangChain format
         langchain_messages = []
         for msg in messages:
             content = msg.get("content", "")
             role = msg.get("role", "")
-            
-            # Check if the message contains an image URL
+
             if isinstance(content, list):
                 # Handle messages with mixed content (text and images)
                 message_content = []
@@ -88,14 +123,19 @@ def get_response_from_ai_gpt_4_32k(messages):
                             })
                         elif item.get("type") == "image_url":
                             image_url = item["image_url"]
-                            if image_url.startswith('https'):
-                                # Convert image URL to base64
-                                base64_image = encode_image_to_base64(image_url)
+                            if image_url.startswith(('http://', 'https://', 'data:')):
+                                if image_url.startswith('data:'):
+                                    # Already in base64 format
+                                    base64_image = image_url
+                                else:
+                                    # Convert URL to base64
+                                    base64_image = encode_image_to_base64(image_url)
+
                                 if base64_image:
                                     message_content.append({
                                         "type": "image_url",
                                         "image_url": {
-                                            "url": f"data:image/jpeg;base64,{base64_image}"
+                                            "url": base64_image
                                         }
                                     })
                 
@@ -116,7 +156,7 @@ def get_response_from_ai_gpt_4_32k(messages):
 
         # Get completion using the chat model
         response = llm(langchain_messages)
-        
+
         # Return the response content
         return response.content
 
