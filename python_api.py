@@ -45,8 +45,20 @@ OPENAI_AZURE_API_BASE_URL = os.getenv('OPENAI_AZURE_API_BASE_URL')
 OPENAI_AZURE_API_KEY = os.getenv('OPENAI_AZURE_API_KEY')
 OPENAI_AZURE_API_ENGINE = os.getenv('OPENAI_AZURE_API_ENGINE')
 
-def get_response_from_ai_gpt_4_32k(messages):
+def encode_image_to_base64(image_url):
+    try:
+        response = requests.get(image_url)
+        if response.status_code == 200:
+            image = Image.open(io.BytesIO(response.content))
+            buffered = io.BytesIO()
+            image.save(buffered, format="PNG")
+            return base64.b64encode(buffered.getvalue()).decode('utf-8')
+        return None
+    except Exception as e:
+        print(f"Error encoding image: {str(e)}")
+        return None
 
+def get_response_from_ai_gpt_4_32k(messages):
     try:
         # Initialize AzureChatOpenAI
         llm = AzureChatOpenAI(
@@ -56,30 +68,61 @@ def get_response_from_ai_gpt_4_32k(messages):
             openai_api_key=OPENAI_AZURE_API_KEY,
             temperature=0.7,
         )
-        # Convert messages to LangChain format
+
+        # Convert messages to LangChain format with image support
         langchain_messages = []
         for msg in messages:
             content = msg.get("content", "")
             role = msg.get("role", "")
-
-            if role == "system":
-                langchain_messages.append(SystemMessage(content=content))
-            elif role == "user":
-                langchain_messages.append(HumanMessage(content=content))
-            elif role == "assistant":
-                langchain_messages.append(AIMessage(content=content))
+            
+            # Check if the message contains an image URL
+            if isinstance(content, list):
+                # Handle messages with mixed content (text and images)
+                message_content = []
+                for item in content:
+                    if isinstance(item, dict):
+                        if item.get("type") == "text":
+                            message_content.append({
+                                "type": "text",
+                                "text": item["text"]
+                            })
+                        elif item.get("type") == "image_url":
+                            image_url = item["image_url"]
+                            if image_url.startswith('https'):
+                                # Convert image URL to base64
+                                base64_image = encode_image_to_base64(image_url)
+                                if base64_image:
+                                    message_content.append({
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:image/jpeg;base64,{base64_image}"
+                                        }
+                                    })
+                
+                if role == "user":
+                    langchain_messages.append(HumanMessage(content=message_content))
+                elif role == "system":
+                    langchain_messages.append(SystemMessage(content=message_content))
+                elif role == "assistant":
+                    langchain_messages.append(AIMessage(content=message_content))
+            else:
+                # Handle regular text messages
+                if role == "system":
+                    langchain_messages.append(SystemMessage(content=content))
+                elif role == "user":
+                    langchain_messages.append(HumanMessage(content=content))
+                elif role == "assistant":
+                    langchain_messages.append(AIMessage(content=content))
 
         # Get completion using the chat model
         response = llm(langchain_messages)
-
+        
         # Return the response content
         return response.content
-
 
     except Exception as e:
         print(f"Azure OpenAI API Error: {str(e)}")
         return f"Error: {str(e)}"
-
 
 def extract_file_content(url, file_type):
     # Add scheme if missing
@@ -139,18 +182,46 @@ def after_request(response):
 
 @app.route('/gpt/get_ai_response', methods=['POST'])
 def get_ai_response():
-    prompt = request.json.get('prompt')
-    system_prompt = request.json.get('systemPrompt')
-    taskId = request.json.get('taskId')
-    matterId = request.json.get('matterId')
+    try:
+        data = request.json
+        prompt = data.get('prompt', {})
+        system_prompt = data.get('systemPrompt')
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": prompt}
-    ]
-    
-    response = get_response_from_ai_gpt_4_32k(messages)
-    return jsonify({"response": response, "systemPrompt": system_prompt, "userPrompt": prompt})
+        # Initialize messages with system prompt
+        messages = [
+            {"role": "system", "content": system_prompt}
+        ]
+
+        # Format user message based on prompt type
+        if isinstance(prompt, dict) and 'image_url' in prompt:
+            # If prompt has image_url, format content as array with text and image
+            user_message = {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt.get('text', '')},
+                    {"type": "image_url", "image_url": prompt['image_url']}
+                ]
+            }
+        else:
+            # If no image_url, use prompt directly as content
+            user_message = {
+                "role": "user",
+                "content": prompt
+            }
+
+        messages.append(user_message)
+        
+        response = get_response_from_ai_gpt_4_32k(messages)
+        
+        return jsonify({
+            "response": response,
+            "systemPrompt": system_prompt,
+            "userPrompt": prompt
+        })
+        
+    except Exception as e:
+        print(f"Error in get_ai_response: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/gpt/extract_file_content', methods=['POST'])
 def get_file_content():
