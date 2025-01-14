@@ -291,15 +291,21 @@ def start_consultation():
         data = request.json
         user_id = data.get('userId')
         consultation_id = data.get('consultationId')
+        user_name = data.get('userName', '')  # Get user name if provided
 
         if not all([user_id, consultation_id]):
             return jsonify({
                 'error': 'Missing required fields'
             }), 400
 
-        # Return the first question to start the consultation
+        # Create a personalized welcome message
+        welcome_message = (
+            f"Welcome{' ' + user_name if user_name else ''}! I'm your AI legal assistant. "
+            "To help you better, could you please tell me about the legal matter that brought you here today?"
+        )
+
         return jsonify({
-            "firstQuestion": "What legal matter brings you here today?"
+            "firstQuestion": welcome_message
         })
 
     except Exception as e:
