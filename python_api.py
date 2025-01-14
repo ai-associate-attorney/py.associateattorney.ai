@@ -24,7 +24,13 @@ import tempfile
 
 # Create Flask app instance
 app = Flask(__name__)
-#CORS(app)  # Enable CORS for all routes
+CORS(app, resources={
+    r"/gpt/*": {
+        "origins": ["http://localhost:3000", "https://app.associateattorney.ai"],
+        "methods": ["POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
 load_dotenv()  # This loads the variables from .env
 
@@ -94,6 +100,17 @@ def extract_file_content(url, file_type):
             return f"[Error processing PDF: {str(e)}]"
             
     return "[Unsupported file type]"
+
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
+
+# Add this before each route
+@app.after_request
+def after_request(response):
+    return add_cors_headers(response)
 
 @app.route('/gpt/get_ai_response', methods=['POST'])
 def get_ai_response():
@@ -177,6 +194,120 @@ Based on the previous context and current word, provide ONE detailed paragraph s
         return jsonify({"suggestions": suggestions})
     except Exception as e:
         return jsonify({"error": str(e)})
+
+@app.route('/gpt/process_consultation', methods=['POST'])
+def process_consultation():
+    try:
+        # Get request data
+        data = request.json
+        user_id = data.get('userId')
+        consultation_id = data.get('consultationId')
+        current_question = data.get('currentQuestion')
+        answer = data.get('answer')
+        system_prompt = data.get('systemPrompt')
+
+        if not all([user_id, consultation_id, current_question, answer, system_prompt]):
+            return jsonify({
+                'error': 'Missing required fields'
+            }), 400
+
+        # Prepare the conversation context for AI
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Current Question: {current_question}\nUser's Answer: {answer}\n\nBased on this answer, please:\n1. Extract relevant events with dates\n2. Note any mentioned files or documents\n3. Identify the client's goals\n4. Suggest immediate tasks\n5. Analyze possible outcomes\n6. Provide the next relevant question to ask\n\nFormat your response as JSON with the following structure:\n{{\n  \"events\": [\"event1\", \"event2\"],\n  \"files\": [\"file1\", \"file2\"],\n  \"goals\": [\"goal1\", \"goal2\"],\n  \"tasks\": [\"task1\", \"task2\"],\n  \"possibleOutcome\": [\"outcome1\", \"outcome2\"],\n  \"nextQuestion\": \"your next question\",\n  \"interviewQnA\": {{\n    \"question\": \"{current_question}\",\n    \"answer\": \"{answer}\"\n  }}\n}}"}
+        ]
+
+        # Get AI response
+        ai_response = get_response_from_ai_gpt_4_32k(messages)
+
+        # Parse AI response
+        try:
+            response_data = json.loads(ai_response)
+        except json.JSONDecodeError:
+            return jsonify({
+                'error': 'Invalid AI response format'
+            }), 500
+
+        # Ensure all required fields are present
+        required_fields = ['events', 'files', 'goals', 'tasks', 'possibleOutcome', 'nextQuestion', 'interviewQnA']
+        for field in required_fields:
+            if field not in response_data:
+                response_data[field] = []
+
+        return jsonify(response_data)
+
+    except Exception as e:
+        logging.error(f"Error in process_consultation: {str(e)}")
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(e)
+        }), 500
+
+@app.route('/gpt/get_previous_question', methods=['POST'])
+def get_previous_question():
+    try:
+        # Get request data
+        data = request.json
+        user_id = data.get('userId')
+        consultation_id = data.get('consultationId')
+
+        if not all([user_id, consultation_id]):
+            return jsonify({
+                'error': 'Missing required fields'
+            }), 400
+
+        # Prepare the conversation context for AI
+        messages = [
+            {"role": "system", "content": "You are an AI legal assistant helping with an initial consultation. Please provide the previous question based on the consultation context."},
+            {"role": "user", "content": "Get the previous question for this consultation."}
+        ]
+
+        # Get AI response
+        ai_response = get_response_from_ai_gpt_4_32k(messages)
+
+        return jsonify({
+            "question": "What legal matter brings you here today?",  # Default first question
+            "previousAnswer": "",
+            "notepadData": {
+                "events": [],
+                "files": [],
+                "goals": [],
+                "tasks": [],
+                "possibleOutcome": []
+            }
+        })
+
+    except Exception as e:
+        logging.error(f"Error in get_previous_question: {str(e)}")
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(e)
+        }), 500
+
+@app.route('/gpt/start_consultation', methods=['POST'])
+def start_consultation():
+    try:
+        # Get request data
+        data = request.json
+        user_id = data.get('userId')
+        consultation_id = data.get('consultationId')
+
+        if not all([user_id, consultation_id]):
+            return jsonify({
+                'error': 'Missing required fields'
+            }), 400
+
+        # Return the first question to start the consultation
+        return jsonify({
+            "firstQuestion": "What legal matter brings you here today?"
+        })
+
+    except Exception as e:
+        logging.error(f"Error in start_consultation: {str(e)}")
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(e)
+        }), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3001, debug=True)
