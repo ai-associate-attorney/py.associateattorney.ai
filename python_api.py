@@ -1,8 +1,8 @@
 from flask import Flask, request, jsonify, send_file, render_template
 from flask_cors import CORS
 import openai
-from openai import OpenAI
-from openai import AzureOpenAI
+from langchain_openai import AzureChatOpenAI
+from langchain.schema import HumanMessage, SystemMessage, AIMessage
 import os
 import sys
 import re
@@ -40,21 +40,40 @@ OPENAI_AZURE_API_KEY = os.getenv('OPENAI_AZURE_API_KEY')
 OPENAI_AZURE_API_ENGINE = os.getenv('OPENAI_AZURE_API_ENGINE')
 
 def get_response_from_ai_gpt_4_32k(messages):
-    client = AzureOpenAI(
-        api_key=OPENAI_AZURE_API_KEY,
-        api_version=OPENAI_AZURE_API_VERSION,
-        azure_endpoint=OPENAI_AZURE_API_BASE_URL
-    )
 
     try:
-        response = client.chat.completions.create(
-            model=OPENAI_AZURE_API_ENGINE,
-            messages=messages
+        # Initialize AzureChatOpenAI
+        llm = AzureChatOpenAI(
+            openai_api_version=OPENAI_AZURE_API_VERSION,
+            azure_endpoint=OPENAI_AZURE_API_BASE_URL,
+            azure_deployment=OPENAI_AZURE_API_ENGINE,
+            openai_api_key=OPENAI_AZURE_API_KEY,
+            temperature=0.7,
         )
-        # Extract the response content
-        return response.choices[0].message.content
+        # Convert messages to LangChain format
+        langchain_messages = []
+        for msg in messages:
+            content = msg.get("content", "")
+            role = msg.get("role", "")
+
+            if role == "system":
+                langchain_messages.append(SystemMessage(content=content))
+            elif role == "user":
+                langchain_messages.append(HumanMessage(content=content))
+            elif role == "assistant":
+                langchain_messages.append(AIMessage(content=content))
+
+        # Get completion using the chat model
+        response = llm(langchain_messages)
+
+        # Return the response content
+        return response.content
+
+
     except Exception as e:
-        return str(e)
+        print(f"Azure OpenAI API Error: {str(e)}")
+        return f"Error: {str(e)}"
+
 
 def extract_file_content(url, file_type):
     # Add scheme if missing
