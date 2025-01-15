@@ -29,12 +29,14 @@ CORS(app, resources={
     r"/gpt/*": {
         "origins": [
             "http://localhost:3000",
+            "http://localhost",
             "https://app.associateattorney.ai",
             "https://associateattorney.ai",
             # Add any other production domains you need
         ],
-        "methods": ["POST", "OPTIONS", "GET"],
-        "allow_headers": ["Content-Type", "Authorization"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization", "Accept", "Origin"],
+        "expose_headers": ["Content-Type", "Authorization"],
         "supports_credentials": True
     }
 })
