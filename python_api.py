@@ -120,6 +120,19 @@ def get_response_from_ai_gpt_4_32k(messages):
                             message_content.append(item["text"])
                         elif item.get("type") == "image_url":
                             image_url = item["image_url"]
+
+                            if image_url.lower().endswith('.txt'):
+                                # Handle TXT files
+                                try:
+                                    response = requests.get(image_url)
+                                    if response.status_code == 200:
+                                        # Get text content and decode
+                                        txt_content = response.content.decode('utf-8', errors='ignore')
+                                        message_content.append(f"Get summery of the following text:\n{txt_content}")
+                                except Exception as e:
+                                    print(f"Error processing TXT file: {str(e)}")
+                                    message_content.append(f"Error reading TXT file: {str(e)}")
+
                             if image_url.lower().endswith('.pdf'):
                                 # Handle PDF using pdfplumber
                                 try:
