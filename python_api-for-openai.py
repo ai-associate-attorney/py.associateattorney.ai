@@ -287,22 +287,56 @@ def get_previous_question():
 @app.route('/gpt/start_consultation', methods=['POST'])
 def start_consultation():
     try:
-        # Get request data
         data = request.json
         user_id = data.get('userId')
         consultation_id = data.get('consultationId')
-        user_name = data.get('userName', '')  # Get user name if provided
+        user_data = data.get('userData', {})
+        attorney_data = data.get('attorneyData', {})
+        system_prompt = data.get('systemPrompt', '')
 
         if not all([user_id, consultation_id]):
             return jsonify({
                 'error': 'Missing required fields'
             }), 400
 
-        # Create a personalized welcome message
-        welcome_message = (
-            f"Welcome{' ' + user_name if user_name else ''}! I'm your AI legal assistant. "
-            "To help you better, could you please tell me about the legal matter that brought you here today?"
-        )
+        # Prepare the conversation context for AI
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"""Generate a welcoming first message for the initial legal consultation.
+Available information:
+- Client Name: {user_data.get('name', '')}
+- Client Email: {user_data.get('email', '')}
+- Client Phone: {user_data.get('phone', '')}
+- Preferred Language: {user_data.get('preferredLanguage', 'English')}
+- Attorney Name: {attorney_data.get('name', 'Associate Attorney')}
+- Attorney Specialization: {attorney_data.get('specialization', '')}
+- Firm Name: {attorney_data.get('firmName', '')}
+
+The message should:
+1. Be warm and welcoming
+2. Use the client's name if available
+3. Briefly introduce the attorney/firm
+4. Ask about their legal matter
+5. Assure them of confidentiality
+
+Return the message as a simple text string without any JSON formatting."""}
+        ]
+
+        # Get AI response
+        welcome_message = get_response_from_ai_gpt_4_32k(messages)
+
+        # Handle different response formats
+        if isinstance(welcome_message, dict):
+            # If it's a JSON response, extract just the message
+            if 'message' in welcome_message:
+                welcome_message = welcome_message['message']
+            elif 'interviewQnA' in welcome_message:
+                welcome_message = welcome_message['interviewQnA'].get('answer', '')
+            elif 'firstQuestion' in welcome_message:
+                welcome_message = welcome_message['firstQuestion']
+
+        # Ensure we have a string
+        welcome_message = str(welcome_message).strip()
 
         return jsonify({
             "firstQuestion": welcome_message
