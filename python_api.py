@@ -14,7 +14,7 @@ import time
 import datetime
 import logging
 from dotenv import load_dotenv
-import fitz
+import pdfplumber
 import importlib, json
 from PIL import Image
 import pytesseract
@@ -98,7 +98,6 @@ def encode_image_to_base64(image_url):
 
 def get_response_from_ai_gpt_4_32k(messages):
     try:
-        # Initialize AzureChatOpenAI
         llm = AzureChatOpenAI(
             openai_api_version=OPENAI_AZURE_API_VERSION,
             azure_endpoint=OPENAI_AZURE_API_BASE_URL,
@@ -114,41 +113,81 @@ def get_response_from_ai_gpt_4_32k(messages):
             role = msg.get("role", "")
 
             if isinstance(content, list):
-                # Handle messages with mixed content (text and images)
                 message_content = []
                 for item in content:
                     if isinstance(item, dict):
                         if item.get("type") == "text":
-                            message_content.append({
-                                "type": "text",
-                                "text": item["text"]
-                            })
+                            message_content.append(item["text"])
                         elif item.get("type") == "image_url":
                             image_url = item["image_url"]
-                            if image_url.startswith(('http://', 'https://', 'data:')):
-                                if image_url.startswith('data:'):
-                                    # Already in base64 format
-                                    base64_image = image_url
-                                else:
-                                    # Convert URL to base64
-                                    base64_image = encode_image_to_base64(image_url)
+                            if image_url.lower().endswith('.pdf'):
+                                # Handle PDF using pdfplumber
+                                try:
+                                    response = requests.get(image_url)
+                                    if response.status_code == 200:
+                                        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+                                            temp_file.write(response.content)
+                                            temp_path = temp_file.name
+ 
+                                        try:
+                                            pdf_text = ""
+                                            with pdfplumber.open(temp_path) as pdf:
+                                                for page in pdf.pages:
+                                                    pdf_text += page.extract_text() or ""
+                                                    pdf_text += "\n\n"  # Add spacing between pages
+                                            message_content.append(f"PDF Content:\n{pdf_text}")
+                                        finally:
+                                            os.unlink(temp_path)  # Clean up temp file
+                                except Exception as e:
+                                    print(f"Error processing PDF: {str(e)}")
+                                    message_content.append(f"Error reading PDF: {str(e)}")
+                            else:
+                                # Handle image URL (unchanged)
+                                if image_url.startswith(('http://', 'https://', 'data:')):
+                                    if image_url.startswith('data:'):
+                                        # Already in base64 format
+                                        base64_image = image_url
+                                    else:
+                                        # Convert URL to base64
+                                        base64_image = encode_image_to_base64(image_url)
 
-                                if base64_image:
-                                    message_content.append({
-                                        "type": "image_url",
-                                        "image_url": {
-                                            "url": base64_image
-                                        }
-                                    })
+                                    if base64_image:
+                                        message_content.append({
+                                            "type": "image_url",
+                                            "image_url": {
+                                                "url": base64_image
+                                            }
+                                        })
+
+                # Format final content (unchanged)
+                final_content = []
+                text_parts = []
+                for item in message_content:
+                    if isinstance(item, str):
+                        text_parts.append(item)
+                    else:
+                        if text_parts:
+                            final_content.append({
+                                "type": "text",
+                                "text": "\n".join(text_parts)
+                            })
+                            text_parts = []
+                        final_content.append(item)
                 
+                if text_parts:
+                    final_content.append({
+                        "type": "text",
+                        "text": "\n".join(text_parts)
+                    })
+
                 if role == "user":
-                    langchain_messages.append(HumanMessage(content=message_content))
+                    langchain_messages.append(HumanMessage(content=final_content))
                 elif role == "system":
-                    langchain_messages.append(SystemMessage(content=message_content))
+                    langchain_messages.append(SystemMessage(content=final_content))
                 elif role == "assistant":
-                    langchain_messages.append(AIMessage(content=message_content))
+                    langchain_messages.append(AIMessage(content=final_content))
             else:
-                # Handle regular text messages
+                # Handle regular text messages (unchanged)
                 if role == "system":
                     langchain_messages.append(SystemMessage(content=content))
                 elif role == "user":
@@ -156,10 +195,7 @@ def get_response_from_ai_gpt_4_32k(messages):
                 elif role == "assistant":
                     langchain_messages.append(AIMessage(content=content))
 
-        # Get completion using the chat model
         response = llm(langchain_messages)
-
-        # Return the response content
         return response.content
 
     except Exception as e:
