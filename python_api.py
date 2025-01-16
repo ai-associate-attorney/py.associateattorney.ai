@@ -401,25 +401,79 @@ def process_consultation():
         # Prepare the conversation context for AI
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Current Question: {current_question}\nUser's Answer: {answer}\n\nBased on this answer, please:\n1. Extract relevant events with dates\n2. Note any mentioned files or documents\n3. Identify the client's goals\n4. Suggest immediate tasks\n5. Analyze possible outcomes\n6. Provide the next relevant question to ask\n\nFormat your response as JSON with the following structure:\n{{\n  \"events\": [\"event1\", \"event2\"],\n  \"files\": [\"file1\", \"file2\"],\n  \"goals\": [\"goal1\", \"goal2\"],\n  \"tasks\": [\"task1\", \"task2\"],\n  \"possibleOutcome\": [\"outcome1\", \"outcome2\"],\n  \"nextQuestion\": \"your next question\",\n  \"interviewQnA\": {{\n    \"question\": \"{current_question}\",\n    \"answer\": \"{answer}\"\n  }}\n}}"}
+            {"role": "user", "content": f"""Current Question: {current_question}
+User's Answer: {answer}
+
+Based on this answer, please:
+1. Extract relevant events with dates
+2. Note any mentioned files or documents
+3. Identify the client's goals
+4. Suggest immediate tasks
+5. Analyze possible outcomes
+6. Provide the next relevant question to ask
+
+You must respond with valid JSON using this exact format:
+{{
+    "events": [],
+    "files": [],
+    "goals": [],
+    "tasks": [],
+    "possibleOutcome": [],
+    "nextQuestion": "",
+    "interviewQnA": {{
+        "question": "{current_question}",
+        "answer": "{answer}"
+    }}
+}}"""}
         ]
 
         # Get AI response
         ai_response = get_response_from_ai_gpt_4_32k(messages)
 
-        # Parse AI response
+        # Try to parse AI response as JSON
         try:
             response_data = json.loads(ai_response)
         except json.JSONDecodeError:
-            return jsonify({
-                'error': 'Invalid AI response format'
-            }), 500
+            # If JSON parsing fails, try to clean the response and parse again
+            try:
+                # Remove any markdown formatting or extra text
+                cleaned_response = ai_response.strip()
+                # Find the first { and last }
+                start_idx = cleaned_response.find('{')
+                end_idx = cleaned_response.rfind('}') + 1
+                if start_idx != -1 and end_idx != 0:
+                    cleaned_json = cleaned_response[start_idx:end_idx]
+                    response_data = json.loads(cleaned_json)
+                else:
+                    # If we can't find valid JSON, create a default response
+                    response_data = {
+                        "events": [],
+                        "files": [],
+                        "goals": [],
+                        "tasks": [],
+                        "possibleOutcome": [],
+                        "nextQuestion": "Could you please clarify your previous response?",
+                        "interviewQnA": {
+                            "question": current_question,
+                            "answer": answer
+                        }
+                    }
+            except Exception:
+                return jsonify({
+                    'error': 'Invalid AI response format',
+                    'raw_response': ai_response
+                }), 500
 
         # Ensure all required fields are present
         required_fields = ['events', 'files', 'goals', 'tasks', 'possibleOutcome', 'nextQuestion', 'interviewQnA']
         for field in required_fields:
             if field not in response_data:
-                response_data[field] = []
+                response_data[field] = [] if field != 'nextQuestion' else ''
+                if field == 'interviewQnA':
+                    response_data[field] = {
+                        "question": current_question,
+                        "answer": answer
+                    }
 
         return jsonify(response_data)
 
