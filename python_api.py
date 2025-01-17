@@ -484,6 +484,149 @@ You must respond with valid JSON using this exact format:
             'message': str(e)
         }), 500
 
+@app.route('/gpt/get_ai_response_v2', methods=['POST'])
+def get_ai_response_v2():
+    try:
+        data = request.json
+        prompt = data.get('prompt', {})
+        system_prompt = data.get('systemPrompt')
+        
+        # Template information text
+        template_info = (
+            "We have three types of templates: "
+            "1. Letter template - For formal letter writing "
+            "2. Legal template - For Legal writing "
+            "3. General template - For general purpose writing "
+            "Please provide appropriate template type and content based on the request. "
+            "Response should be in JSON format with template_type "
+            "template_content must be in letter format and not json array for letter template"
+            "and not json object for general template."
+            "template_content must be in legal format and not json array for legal template"
+            "for attached files, template_type should be 'general template' and template_content should be the file meaning in text format."
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt}
+        ]
+
+        # Handle prompt based on type
+        if isinstance(prompt, dict):
+            if 'image_url' in prompt:
+                messages.append({
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": f"{prompt.get('text', '')}\n\n{template_info}"},
+                        {"type": "image_url", "image_url": prompt['image_url']}
+                    ]
+                })
+            else:
+                messages.append({
+                    "role": "user", 
+                    "content": f"{prompt.get('text', '')}\n\n{template_info}"
+                })
+        else:
+            messages.append({
+                "role": "user", 
+                "content": f"{prompt}\n\n{template_info}"
+            })
+
+        # Get AI response
+        ai_response = get_response_from_ai_gpt_4_32k(messages)
+
+        try:
+            # Initialize default response structure
+            response_data = {
+                'template_type': '',
+                'template_content': '',
+                'raw_response': ai_response,
+                'systemPrompt': system_prompt,
+                'userPrompt': prompt
+            }
+
+            # Clean and parse the raw response
+            if isinstance(ai_response, str):
+                cleaned_response = ai_response.strip()
+                
+                try:
+                    parsed_response = json.loads(cleaned_response)
+                    
+                    if 'template_type' in parsed_response:
+                        response_data['template_type'] = parsed_response['template_type']
+                    
+                    if 'template_content' in parsed_response:
+                        content = parsed_response['template_content']
+                        if isinstance(content, str):
+                            response_data['template_content'] = content
+                        elif isinstance(content, list):
+                            response_data['template_content'] = content
+                        else:
+                            response_data['template_content'] = str(content)
+                    
+                    response_data['response'] = cleaned_response
+                    
+                except json.JSONDecodeError:
+                    # Try to extract JSON from the response using regex
+                    import re
+                    json_match = re.search(r'\{[\s\S]*\}', cleaned_response)
+                    
+                    if json_match:
+                        try:
+                            # Try parsing the extracted JSON
+                            json_str = json_match.group(0)
+                            parsed_response = json.loads(json_str)
+                            
+                            if 'template_type' in parsed_response:
+                                response_data['template_type'] = parsed_response['template_type']
+                            
+                            if 'template_content' in parsed_response:
+                                content = parsed_response['template_content']
+                                if isinstance(content, str):
+                                    response_data['template_content'] = content
+                                elif isinstance(content, list):
+                                    response_data['template_content'] = content
+                                else:
+                                    response_data['template_content'] = str(content)
+                            
+                            response_data['response'] = json_str
+                            
+                        except json.JSONDecodeError:
+                            # If regex extraction fails, create a new JSON response
+                            response_data['template_type'] = 'general template'
+                            response_data['template_content'] = cleaned_response
+                            response_data['response'] = cleaned_response
+                    else:
+                        # If no JSON-like structure found, treat as general template
+                        response_data['template_type'] = 'general template'
+                        response_data['template_content'] = cleaned_response
+                        response_data['response'] = cleaned_response
+            
+            return jsonify(response_data)
+
+        except Exception as parsing_error:
+            print(f"Error parsing AI response: {str(parsing_error)}")
+            # Create a fallback response
+            return jsonify({
+                'template_type': 'general template',
+                'template_content': str(ai_response),
+                'response': str(ai_response),
+                'raw_response': str(ai_response),
+                'systemPrompt': system_prompt,
+                'userPrompt': prompt
+            })
+
+    except Exception as e:
+        print(f"Error in get_ai_response_v2: {str(e)}")
+        return jsonify({
+            'error': str(e),
+            'template_type': '',
+            'template_content': '',
+            'response': '',
+            'raw_response': '',
+            'systemPrompt': system_prompt,
+            'userPrompt': prompt
+        }), 500
+
+
 @app.route('/gpt/get_previous_question', methods=['POST'])
 def get_previous_question():
     try:
