@@ -733,5 +733,47 @@ Return the message as a simple text string without any JSON formatting."""}
             'message': str(e)
         }), 500
 
+
+@app.route('/gpt/start_case_consultation', methods=['POST'])
+def start_case_consultation():
+    try:
+        data = request.json
+        prompt = data.get('prompt', {})
+        system_prompt = data.get('systemPrompt')
+        user_data = data.get('userData', {})
+
+        # Prepare the conversation context for AI
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"""Generate a chat response for the case detail of the case.
+
+Available information:
+- Client Name: {user_data.get('name', '')}
+- Client Email: {user_data.get('email', '')}
+- Client Phone: {user_data.get('phone', '')}  
+The message should:
+1. Be warm and welcoming
+2. Use the client's name if available
+2. Be in the language US accent.
+5. Assure them of confidentiality
+
+
+Return the message as a simple text string without any JSON formatting."""}
+        ]
+
+        # Get AI response
+        chat_message = get_response_from_ai_gpt_4_32k(messages)
+        # Ensure we have a string
+        chat_message = str(chat_message).strip()
+
+        return jsonify({"response": chat_message})
+
+    except Exception as e:
+        logging.error(f"Error in start_consultation: {str(e)}")
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(e)
+        }), 500  
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3001, debug=True)
