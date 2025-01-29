@@ -484,9 +484,16 @@ You must respond with valid JSON using this exact format:
             'message': str(e)
         }), 500
 
-@app.route('/gpt/get_ai_response_v2', methods=['POST'])
+@app.route('/gpt/get_ai_response_v2', methods=['POST', 'OPTIONS'])
 def get_ai_response_v2():
     try:
+        if request.method == 'OPTIONS':
+            response = jsonify({'message': 'OK'})
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            response.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+            return response
+
         data = request.json
         prompt = data.get('prompt', {})
         system_prompt = data.get('systemPrompt')
